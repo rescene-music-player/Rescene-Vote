@@ -230,6 +230,14 @@ const SONGS = [
 
 const MY_VOTE_KEY = "rescene_my_vote"; // 기기별 로컬 저장(중복투표 방지용)
 
+// 어떤 이유로든 SONGS에 같은 이름이 중복으로 들어와도 한 번만 표시되도록 방어
+const seenNames = new Set();
+const UNIQUE_SONGS = SONGS.filter(song=>{
+  if(seenNames.has(song.name)) return false;
+  seenNames.add(song.name);
+  return true;
+});
+
 let votes = {};
 let myVote = null;
 let resultsVisible = false; // 투표 전에는 실시간 결과를 볼 수 없도록 제어
@@ -242,7 +250,7 @@ function loadVotes(){
   // Firebase 실시간 리스너: 누군가 투표하면 모든 접속자 화면이 자동 갱신됨
   votesRef.on("value", (snapshot)=>{
     const data = snapshot.val() || {};
-    SONGS.forEach(song=>{
+    UNIQUE_SONGS.forEach(song=>{
       if(!(slug(song.name) in data)) data[slug(song.name)] = 0;
     });
     votes = data;
@@ -312,16 +320,20 @@ function render(){
 
   const container = document.getElementById('songList');
   container.className = "";
-  container.innerHTML = SONGS.map(song=>{
+  const displaySongs = canSeeResults
+    ? [...UNIQUE_SONGS].sort((a,b) => (votes[slug(b.name)]||0) - (votes[slug(a.name)]||0))
+    : UNIQUE_SONGS;
+  container.innerHTML = displaySongs.map((song, idx)=>{
     const s = slug(song.name);
     const count = votes[s] || 0;
     const pct = canSeeResults ? Math.round((count / maxVote) * 100) : 0;
     const isVoted = myVote === s;
     const countLabel = canSeeResults ? count : (isVoted ? "" : "");
+    const rankLabel = canSeeResults ? `<span style="font-size:12px;color:#bbb;font-weight:700;margin-right:6px;">${idx+1}위</span>` : "";
     return `
       <div class="song ${isVoted ? 'voted' : ''}" onclick="castVote('${s}')">
         <div class="song-top">
-          <span class="song-name">${song.name}${isVoted ? '<span class="voted-badge">내 투표</span>' : ''}<br><span class="type-badge type-${song.type}">${song.type}</span><span style="font-size:12px;color:#aaa;font-weight:400;">${song.date}</span></span>
+          <span class="song-name">${rankLabel}${song.name}${isVoted ? '<span class="voted-badge">내 투표</span>' : ''}<br><span class="type-badge type-${song.type}">${song.type}</span><span style="font-size:12px;color:#aaa;font-weight:400;">${song.date}</span></span>
           <span class="song-count ${canSeeResults ? '' : 'locked'}">${canSeeResults ? countLabel : '🔒'}</span>
         </div>
         <div class="bar-track">

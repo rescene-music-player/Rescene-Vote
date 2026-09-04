@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>리센느 마이너 갤러리 사용자들이 뽑은 리센느 최고의 노래</title>
+<style>
+  :root{
+    --bg:#fff5f8;
+    --card:#ffffff;
+    --accent:#d94f6b;
+    --accent-dark:#7a2f3c;
+    --gray:#9aa0a6;
+    --text:#222;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans KR',sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    padding:20px 14px 60px;
+  }
+  .header{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    margin-bottom:6px;
+  }
+  .logo{
+    width:48px;height:48px;border-radius:50%;
+    background:var(--accent);
+    display:flex;align-items:center;justify-content:center;
+    color:white;font-weight:bold;font-size:13px;
+    flex-shrink:0;
+  }
+  h1{font-size:20px;margin:0;}
+  .sub{color:#888;font-size:13px;margin:2px 0 0;}
+  .meta-bar{
+    background:#1b1b1b;
+    color:white;
+    display:flex;
+    justify-content:space-between;
+    padding:14px 16px;
+    border-radius:10px;
+    margin:16px 0 20px;
+    font-size:14px;
+  }
+  .song{
+    background:var(--card);
+    border-radius:12px;
+    padding:14px 16px;
+    margin-bottom:12px;
+    box-shadow:0 1px 3px rgba(0,0,0,0.06);
+    cursor:pointer;
+    transition:transform .1s ease;
+    border:2px solid transparent;
+  }
+  .song:active{transform:scale(0.98);}
+  .song.voted{
+    border-color:var(--accent);
+  }
+  .song-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:8px;
+  }
+  .song-name{font-size:16px;font-weight:600;}
+  .song-count{font-size:16px;font-weight:700;color:var(--accent-dark);}
+  .bar-track{
+    width:100%;
+    height:14px;
+    background:#eee;
+    border-radius:7px;
+    overflow:hidden;
+    display:flex;
+  }
+  .bar-fill{
+    height:100%;
+    background:linear-gradient(90deg,var(--accent-dark),var(--accent));
+    transition:width .4s ease;
+  }
+  .voted-badge{
+    display:inline-block;
+    margin-left:8px;
+    font-size:11px;
+    background:var(--accent);
+    color:white;
+    padding:2px 8px;
+    border-radius:10px;
+    vertical-align:middle;
+  }
+  .type-badge{
+    display:inline-block;
+    font-size:10px;
+    font-weight:700;
+    padding:1px 6px;
+    border-radius:6px;
+    margin-right:6px;
+    vertical-align:middle;
+  }
+  .type-EP{ background:#e3e0ff; color:#4a3fb0; }
+  .type-SINGLE{ background:#ffe0ea; color:#b0325a; }
+  .type-OST{ background:#dff5e3; color:#2a7a40; }
+  .footer-note{
+    text-align:center;
+    color:#999;
+    font-size:12px;
+    margin-top:24px;
+    line-height:1.6;
+  }
+  .reset-btn{
+    display:block;
+    margin:20px auto 0;
+    background:none;
+    border:1px solid #ccc;
+    color:#888;
+    padding:8px 16px;
+    border-radius:20px;
+    font-size:12px;
+  }
+  .loading{
+    text-align:center;
+    padding:40px;
+    color:#aaa;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">RSC</div>
+  <div>
+    <h1>리센느 마이너 갤러리 사용자들이<br>뽑은 리센느 최고의 노래</h1>
+    <p class="sub">공식 음원 기준 · 곡 하나를 눌러 투표하세요</p>
+  </div>
+</div>
+
+<div class="meta-bar">
+  <span id="totalVotes">투표수 불러오는 중...</span>
+  <span id="voteStatus"></span>
+</div>
+
+<div id="songList" class="loading">불러오는 중...</div>
+
+<button class="reset-btn" id="resetBtn">내 투표 취소하기</button>
+
+<p class="footer-note">
+  공식 음원 목록: rescene-music-player/RMP 저장소 기준<br>
+  투표는 기기별로 1회만 가능합니다.
+</p>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<script>
+// ▼▼▼ Firebase 콘솔 > 프로젝트 설정 > 웹 앱에서 복사한 값을 여기에 붙여넣으세요 ▼▼▼
+const firebaseConfig = {
+  apiKey: "AIzaSyAjiiXHjBq3P8C7HA_aoKCYobi-Db29KOY",
+  authDomain: "rescene-vote.firebaseapp.com",
+  databaseURL: "https://rescene-vote-default-rtdb.firebaseio.com",
+  projectId: "rescene-vote",
+  storageBucket: "rescene-vote.firebasestorage.app",
+  messagingSenderId: "470097548574",
+  appId: "1:470097548574:web:a3556cef9bd5c59f5fe50f"
+};
+// ▲▲▲ 여기까지 ▲▲▲
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const votesRef = db.ref("votes");
+
+// 발매일 순으로 정리한 공식 음원 목록 (실제 개별 곡명 기준)
+const SONGS = [
+  { name: "YoYo", date: "2024-02-29", type: "SINGLE" },
+  { name: "UhUh", date: "2024-03-26", type: "SINGLE" },
+  { name: "Counting Star", date: "2024-06-26", type: "OST" },
+  { name: "Lucky You", date: "2024-08-27", type: "EP" },
+  { name: "LOVE ATTACK", date: "2024-08-27", type: "EP" },
+  { name: "New World", date: "2024-08-27", type: "EP" },
+  { name: "Pinball", date: "2024-08-27", type: "EP" },
+  { name: "Glow Up", date: "2025-02-05", type: "EP" },
+  { name: "CRASH", date: "2025-02-05", type: "EP" },
+  { name: "Going on", date: "2025-02-05", type: "EP" },
+  { name: "In my lotion", date: "2025-02-05", type: "EP" },
+  { name: "Cotton Candy", date: "2025-02-05", type: "EP" },
+  { name: "밤밤밤", date: "2025-06-12", type: "OST" },
+  { name: "Deja Vu", date: "2025-07-02", type: "SINGLE" },
+  { name: "Mood", date: "2025-07-02", type: "SINGLE" },
+  { name: "고백주파수", date: "2025-09-17", type: "OST" },
+  { name: "Heart Drop", date: "2025-11-25", type: "EP" },
+  { name: "Bloom", date: "2025-11-25", type: "EP" },
+  { name: "Love Echo", date: "2025-11-25", type: "EP" },
+  { name: "Hello XO", date: "2025-11-25", type: "EP" },
+  { name: "MVP", date: "2025-11-25", type: "EP" },
+  { name: "Busy Boy", date: "2026-02-27", type: "SINGLE" },
+  { name: "Higher", date: "2026-02-27", type: "OST" },
+  { name: "Runaway", date: "2026-04-08", type: "SINGLE" },
+  { name: "Pretty Girl", date: "2026-07-08", type: "SINGLE" }
+];
+
+const MY_VOTE_KEY = "rescene_my_vote"; // 기기별 로컬 저장(중복투표 방지용)
+
+let votes = {};
+let myVote = null;
+
+function slug(name){
+  return name.replace(/[^a-zA-Z0-9가-힣]/g, "_");
+}
+
+function loadVotes(){
+  // Firebase 실시간 리스너: 누군가 투표하면 모든 접속자 화면이 자동 갱신됨
+  votesRef.on("value", (snapshot)=>{
+    const data = snapshot.val() || {};
+    SONGS.forEach(song=>{
+      if(!(slug(song.name) in data)) data[slug(song.name)] = 0;
+    });
+    votes = data;
+    render();
+  });
+}
+
+function loadMyVote(){
+  try{
+    myVote = localStorage.getItem(MY_VOTE_KEY);
+  }catch(e){
+    myVote = null;
+  }
+}
+
+async function clearMyVote(){
+  if(myVote){
+    await votesRef.child(myVote).transaction(cur => Math.max(0, (cur||0) - 1));
+  }
+  try{ localStorage.removeItem(MY_VOTE_KEY); }catch(e){}
+  myVote = null;
+  render();
+}
+
+async function castVote(songSlug){
+  if(myVote === songSlug) return;
+  if(myVote){
+    await votesRef.child(myVote).transaction(cur => Math.max(0, (cur||0) - 1));
+  }
+  await votesRef.child(songSlug).transaction(cur => (cur||0) + 1);
+  try{ localStorage.setItem(MY_VOTE_KEY, songSlug); }catch(e){}
+  myVote = songSlug;
+  render();
+}
+
+function render(){
+  const maxVote = Math.max(1, ...Object.values(votes));
+  const total = Object.values(votes).reduce((a,b)=>a+b,0);
+
+  document.getElementById('totalVotes').textContent = `${total} 투표수`;
+  document.getElementById('voteStatus').textContent = myVote ? "✓ 투표 완료" : "곡을 선택해 투표하세요";
+
+  const container = document.getElementById('songList');
+  container.className = "";
+  container.innerHTML = SONGS.map(song=>{
+    const s = slug(song.name);
+    const count = votes[s] || 0;
+    const pct = Math.round((count / maxVote) * 100);
+    const isVoted = myVote === s;
+    return `
+      <div class="song ${isVoted ? 'voted' : ''}" onclick="castVote('${s}')">
+        <div class="song-top">
+          <span class="song-name">${song.name}${isVoted ? '<span class="voted-badge">내 투표</span>' : ''}<br><span class="type-badge type-${song.type}">${song.type}</span><span style="font-size:12px;color:#aaa;font-weight:400;">${song.date}</span></span>
+          <span class="song-count">${count}</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:${pct}%"></div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+document.getElementById('resetBtn').addEventListener('click', clearMyVote);
+
+function init(){
+  loadMyVote();
+  loadVotes(); // 내부에서 render() 자동 호출
+}
+
+init();
+</script>
+
+</body>
+</html>

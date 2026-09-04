@@ -272,7 +272,6 @@ async function clearMyVote(){
   }
   try{ localStorage.removeItem(MY_VOTE_KEY); }catch(e){}
   myVote = null;
-  resultsVisible = false;
   render();
 }
 
@@ -291,13 +290,13 @@ function render(){
   const maxVote = Math.max(1, ...Object.values(votes));
   const total = Object.values(votes).reduce((a,b)=>a+b,0);
 
-  const canSeeResults = !!myVote && resultsVisible; // 투표 완료 + 버튼 클릭 시에만 결과 공개
+  const canSeeResults = resultsVisible; // 투표 여부와 상관없이 버튼을 누르면 결과 공개
 
   document.getElementById('totalVotes').textContent = canSeeResults ? `${total} 투표수` : "투표 후 확인 가능";
 
   let statusText;
   if(!myVote){
-    statusText = "곡을 선택해 투표하세요";
+    statusText = canSeeResults ? "실시간 결과 보는 중 · 곡을 선택해 투표하세요" : "곡을 선택해 투표하세요";
   }else if(!resultsVisible){
     statusText = "✓ 투표 완료";
   }else{
@@ -307,12 +306,9 @@ function render(){
 
   const resultsBtn = document.getElementById('resultsBtn');
   const lockedHint = document.getElementById('lockedHint');
-  if(myVote && !resultsVisible){
+  if(!resultsVisible){
     resultsBtn.style.display = "block";
     lockedHint.style.display = "none";
-  }else if(!myVote){
-    resultsBtn.style.display = "none";
-    lockedHint.style.display = "block";
   }else{
     resultsBtn.style.display = "none";
     lockedHint.style.display = "none";

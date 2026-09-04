@@ -120,6 +120,31 @@
     border-radius:20px;
     font-size:12px;
   }
+  .results-btn{
+    display:none;
+    width:100%;
+    margin:0 0 16px;
+    background:var(--accent);
+    border:none;
+    color:white;
+    padding:12px 16px;
+    border-radius:10px;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .results-btn:active{opacity:.85;}
+  .hint-note{
+    text-align:center;
+    color:#aaa;
+    font-size:12px;
+    margin:0 0 16px;
+  }
+  .song-count.locked{
+    color:#ccc;
+    font-size:13px;
+    font-weight:500;
+  }
   .loading{
     text-align:center;
     padding:40px;
@@ -141,6 +166,9 @@
   <span id="totalVotes">투표수 불러오는 중...</span>
   <span id="voteStatus"></span>
 </div>
+
+<button class="results-btn" id="resultsBtn">📊 실시간 결과보기</button>
+<p class="hint-note" id="lockedHint" style="display:none;">투표를 완료하면 실시간 결과를 볼 수 있어요</p>
 
 <div id="songList" class="loading">불러오는 중...</div>
 
@@ -204,6 +232,7 @@ const MY_VOTE_KEY = "rescene_my_vote"; // 기기별 로컬 저장(중복투표 �
 
 let votes = {};
 let myVote = null;
+let resultsVisible = false; // 투표 전에는 실시간 결과를 볼 수 없도록 제어
 
 function slug(name){
   return name.replace(/[^a-zA-Z0-9가-힣]/g, "_");
@@ -235,6 +264,7 @@ async function clearMyVote(){
   }
   try{ localStorage.removeItem(MY_VOTE_KEY); }catch(e){}
   myVote = null;
+  resultsVisible = false;
   render();
 }
 
@@ -253,21 +283,46 @@ function render(){
   const maxVote = Math.max(1, ...Object.values(votes));
   const total = Object.values(votes).reduce((a,b)=>a+b,0);
 
-  document.getElementById('totalVotes').textContent = `${total} 투표수`;
-  document.getElementById('voteStatus').textContent = myVote ? "✓ 투표 완료" : "곡을 선택해 투표하세요";
+  const canSeeResults = !!myVote && resultsVisible; // 투표 완료 + 버튼 클릭 시에만 결과 공개
+
+  document.getElementById('totalVotes').textContent = canSeeResults ? `${total} 투표수` : "투표 후 확인 가능";
+
+  let statusText;
+  if(!myVote){
+    statusText = "곡을 선택해 투표하세요";
+  }else if(!resultsVisible){
+    statusText = "✓ 투표 완료";
+  }else{
+    statusText = "✓ 투표 완료 · 실시간 결과 보는 중";
+  }
+  document.getElementById('voteStatus').textContent = statusText;
+
+  const resultsBtn = document.getElementById('resultsBtn');
+  const lockedHint = document.getElementById('lockedHint');
+  if(myVote && !resultsVisible){
+    resultsBtn.style.display = "block";
+    lockedHint.style.display = "none";
+  }else if(!myVote){
+    resultsBtn.style.display = "none";
+    lockedHint.style.display = "block";
+  }else{
+    resultsBtn.style.display = "none";
+    lockedHint.style.display = "none";
+  }
 
   const container = document.getElementById('songList');
   container.className = "";
   container.innerHTML = SONGS.map(song=>{
     const s = slug(song.name);
     const count = votes[s] || 0;
-    const pct = Math.round((count / maxVote) * 100);
+    const pct = canSeeResults ? Math.round((count / maxVote) * 100) : 0;
     const isVoted = myVote === s;
+    const countLabel = canSeeResults ? count : (isVoted ? "" : "");
     return `
       <div class="song ${isVoted ? 'voted' : ''}" onclick="castVote('${s}')">
         <div class="song-top">
           <span class="song-name">${song.name}${isVoted ? '<span class="voted-badge">내 투표</span>' : ''}<br><span class="type-badge type-${song.type}">${song.type}</span><span style="font-size:12px;color:#aaa;font-weight:400;">${song.date}</span></span>
-          <span class="song-count">${count}</span>
+          <span class="song-count ${canSeeResults ? '' : 'locked'}">${canSeeResults ? countLabel : '🔒'}</span>
         </div>
         <div class="bar-track">
           <div class="bar-fill" style="width:${pct}%"></div>
@@ -276,6 +331,11 @@ function render(){
     `;
   }).join("");
 }
+
+document.getElementById('resultsBtn').addEventListener('click', ()=>{
+  resultsVisible = true;
+  render();
+});
 
 document.getElementById('resetBtn').addEventListener('click', clearMyVote);
 

@@ -120,6 +120,17 @@
     border-radius:20px;
     font-size:12px;
   }
+  .admin-btn{
+    display:block;
+    margin:14px auto 0;
+    background:#fff0f0;
+    border:1px solid #e08a8a;
+    color:#c0392b;
+    padding:8px 16px;
+    border-radius:20px;
+    font-size:12px;
+    font-weight:600;
+  }
   .results-btn{
     display:none;
     width:100%;
@@ -173,6 +184,7 @@
 <div id="songList" class="loading">불러오는 중...</div>
 
 <button class="reset-btn" id="resetBtn">내 투표 취소하기</button>
+<button class="admin-btn" id="adminResetBtn" style="display:none;">⚠️ 전체 투표 결과 초기화 (관리자)</button>
 
 <p class="footer-note">
   공식 음원 목록: rescene-music-player/RMP 저장소 기준<br>
@@ -230,6 +242,11 @@ const SONGS = [
 
 const MY_VOTE_KEY = "rescene_my_vote"; // 기기별 로컬 저장(중복투표 방지용)
 
+// 관리자 전용 초기화 기능: URL에 ?admin=비밀값 을 붙였을 때만 버튼이 보임
+// 아래 비밀값은 본인만 알고 계세요. 바꾸고 싶으면 이 문자열만 수정하면 됩니다.
+const ADMIN_SECRET = "rescene-admin-9427";
+const isAdmin = new URLSearchParams(window.location.search).get('admin') === ADMIN_SECRET;
+
 // 어떤 이유로든 SONGS에 같은 이름이 중복으로 들어와도 한 번만 표시되도록 방어
 const seenNames = new Set();
 const UNIQUE_SONGS = SONGS.filter(song=>{
@@ -241,6 +258,7 @@ const UNIQUE_SONGS = SONGS.filter(song=>{
 let votes = {};
 let myVote = null;
 let resultsVisible = false; // 투표 전에는 실시간 결과를 볼 수 없도록 제어
+let voteLock = false; // 투표 처리 중 중복 클릭 방지용 잠금
 
 function slug(name){
   return name.replace(/[^a-zA-Z0-9가-힣]/g, "_");
@@ -267,23 +285,46 @@ function loadMyVote(){
 }
 
 async function clearMyVote(){
-  if(myVote){
-    await votesRef.child(myVote).transaction(cur => Math.max(0, (cur||0) - 1));
+  if(voteLock) return;
+  if(!myVote) return;
+  voteLock = true;
+  const prevVote = myVote;
+  try{
+    await votesRef.child(prevVote).transaction(cur => Math.max(0, (cur||0) - 1));
+    try{ localStorage.removeItem(MY_VOTE_KEY); }catch(e){}
+    myVote = null;
+    render();
+  }finally{
+    voteLock = false;
   }
-  try{ localStorage.removeItem(MY_VOTE_KEY); }catch(e){}
-  myVote = null;
-  render();
 }
 
 async function castVote(songSlug){
-  if(myVote === songSlug) return;
-  if(myVote){
-    await votesRef.child(myVote).transaction(cur => Math.max(0, (cur||0) - 1));
+  if(voteLock) return; // 이전 투표가 처리 중이면 무시 (경쟁 상태 방지)
+  if(myVote === songSlug){
+    await clearMyVote(); // 이미 투표한 곡을 다시 누르면 투표 취소
+    return;
   }
-  await votesRef.child(songSlug).transaction(cur => (cur||0) + 1);
-  try{ localStorage.setItem(MY_VOTE_KEY, songSlug); }catch(e){}
-  myVote = songSlug;
-  render();
+  voteLock = true;
+  const prevVote = myVote;
+  try{
+    myVote = songSlug; // 먼저 반영해서 그 사이 다른 클릭이 끼어들지 못하게 함
+    try{ localStorage.setItem(MY_VOTE_KEY, songSlug); }catch(e){}
+    render();
+    if(prevVote){
+      await votesRef.child(prevVote).transaction(cur => Math.max(0, (cur||0) - 1));
+    }
+    await votesRef.child(songSlug).transaction(cur => (cur||0) + 1);
+  }catch(e){
+    myVote = prevVote; // 실패 시 이전 상태로 복구
+    try{
+      if(prevVote){ localStorage.setItem(MY_VOTE_KEY, prevVote); }
+      else{ localStorage.removeItem(MY_VOTE_KEY); }
+    }catch(e2){}
+    render();
+  }finally{
+    voteLock = false;
+  }
 }
 
 function render(){
@@ -306,13 +347,9 @@ function render(){
 
   const resultsBtn = document.getElementById('resultsBtn');
   const lockedHint = document.getElementById('lockedHint');
-  if(!resultsVisible){
-    resultsBtn.style.display = "block";
-    lockedHint.style.display = "none";
-  }else{
-    resultsBtn.style.display = "none";
-    lockedHint.style.display = "none";
-  }
+  resultsBtn.style.display = "block";
+  resultsBtn.textContent = resultsVisible ? "🔒 결과 닫고 돌아가기" : "📊 실시간 결과보기";
+  lockedHint.style.display = "none";
 
   const container = document.getElementById('songList');
   container.className = "";
@@ -341,11 +378,27 @@ function render(){
 }
 
 document.getElementById('resultsBtn').addEventListener('click', ()=>{
-  resultsVisible = true;
+  resultsVisible = !resultsVisible;
   render();
 });
 
 document.getElementById('resetBtn').addEventListener('click', clearMyVote);
+
+if(isAdmin){
+  const adminBtn = document.getElementById('adminResetBtn');
+  adminBtn.style.display = "block";
+  adminBtn.addEventListener('click', async ()=>{
+    if(!confirm('정말 모든 투표 결과를 초기화할까요? 되돌릴 수 없습니다.')) return;
+    const zeroed = {};
+    UNIQUE_SONGS.forEach(song => { zeroed[slug(song.name)] = 0; });
+    try{
+      await votesRef.set(zeroed);
+      alert('초기화 완료되었습니다.');
+    }catch(e){
+      alert('초기화에 실패했습니다: ' + e.message);
+    }
+  });
+}
 
 function init(){
   loadMyVote();
